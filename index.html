@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Oráculo player</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #p { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<!--
+  The live player of Oráculo's news wall (github.com/baustian/free-my-tv, branch mapa-custom).
+  YouTube only plays an embed on a page with a web address, which an app installed on a TV doesn't have,
+  so the app shows this page in a frame and drives it with postMessage:
+    {wall: 'play', id: '<video id>', sound: true|false}   plays that live, at the live point
+    {wall: 'sound', on: true|false}                       sound on or off
+    {wall: 'stop'}
+  and hears back {wall: 'state', id, state, error}. ES5: the TV runs Chromium 69.
+-->
+<div id="p"></div>
+<script>
+(function () {
+  var player = null, ready = false, wanted = null, sound = false, current = '';
+  // Behind the live point by more than this: back to it. A live's duration is how far it has gone so far.
+  var LAG = 20;
+
+  function tell(msg) {
+    msg.wall = 'state';
+    try { window.parent.postMessage(JSON.stringify(msg), '*'); } catch (e) {}
+  }
+
+  function applySound() {
+    if (!player || !ready) return;
+    if (sound) { player.unMute(); player.setVolume(100); } else player.mute();
+  }
+
+  function toLive() {
+    if (!player || !ready || !player.getDuration) return;
+    var d = player.getDuration(), t = player.getCurrentTime();
+    if (d > 0 && d - t > LAG) player.seekTo(d, true);
+  }
+
+  function play(id) {
+    current = id;
+    if (!ready) { wanted = id; return; }
+    // Muted first: the browser lets a video start by itself only muted; the sound comes on once it plays.
+    player.mute();
+    player.loadVideoById(id);
+  }
+
+  window.onYouTubeIframeAPIReady = function () {
+    player = new YT.Player('p', {
+      width: '100%', height: '100%',
+      playerVars: {autoplay: 1, mute: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, modestbranding: 1,
+                   playsinline: 1, rel: 0},
+      events: {
+        onReady: function () {
+          ready = true;
+          if (wanted) { play(wanted); wanted = null; }
+        },
+        onStateChange: function (e) {
+          if (e.data === YT.PlayerState.PLAYING) { applySound(); toLive(); }
+          // A live that ended (the channel restarts its stream with a new id): the app looks up the new one.
+          tell({id: current, state: e.data});
+        },
+        onError: function (e) { tell({id: current, state: -1, error: e.data}); }
+      }
+    });
+  };
+
+  window.addEventListener('message', function (e) {
+    var m;
+    try { m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; }
+    if (!m || !m.wall) return;
+    if (m.wall === 'play') { sound = !!m.sound; play(m.id); }
+    else if (m.wall === 'sound') { sound = !!m.on; applySound(); }
+    else if (m.wall === 'stop' && player && ready) { player.stopVideo(); current = ''; }
+  });
+
+  setInterval(toLive, 10000);
+
+  var s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>
