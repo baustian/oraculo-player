@@ -41,6 +41,7 @@
     if (!player || !ready || !player.getDuration) return;
     var d = player.getDuration(), t = player.getCurrentTime();
     if (d > 0 && d - t > LAG) player.seekTo(d, true);
+    if (current) tell({id: current, state: player.getPlayerState(), lag: Math.round(d - t)});
   }
 
   function play(id) {
