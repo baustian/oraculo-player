@@ -24,8 +24,9 @@
 <script>
 (function () {
   var player = null, ready = false, wanted = null, sound = false, current = '';
-  // Behind the live point by more than this: back to it. A live's duration is how far it has gone so far.
-  var LAG = 20;
+  // Behind the live point by more than this: back to it. A live's duration is how far it has gone so far, and the
+  // player always runs some seconds behind it, so a small margin made it jump again and again: minutes are fine.
+  var LAG = 300;
 
   function tell(msg) {
     msg.wall = 'state';
@@ -38,7 +39,7 @@
   }
 
   function toLive() {
-    if (!player || !ready || !player.getDuration) return;
+    if (!player || !ready || !player.getDuration || player.getPlayerState() !== 1) return;
     var d = player.getDuration(), t = player.getCurrentTime();
     if (d > 0 && d - t > LAG) player.seekTo(d, true);
     if (current) tell({id: current, state: player.getPlayerState(), lag: Math.round(d - t)});
@@ -63,7 +64,7 @@
           if (wanted) { play(wanted); wanted = null; }
         },
         onStateChange: function (e) {
-          if (e.data === YT.PlayerState.PLAYING) { applySound(); toLive(); }
+          if (e.data === YT.PlayerState.PLAYING) applySound();
           // A live that ended (the channel restarts its stream with a new id): the app looks up the new one.
           tell({id: current, state: e.data});
         },
@@ -81,7 +82,7 @@
     else if (m.wall === 'stop' && player && ready) { player.stopVideo(); current = ''; }
   });
 
-  setInterval(toLive, 10000);
+  setInterval(toLive, 60000);
 
   var s = document.createElement('script');
   s.src = 'https://www.youtube.com/iframe_api';
